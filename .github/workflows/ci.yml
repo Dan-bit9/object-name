@@ -77,15 +77,14 @@ jobs:
           Start-Sleep -Seconds 3
           if ($monitor.State -eq 'Failed') { Receive-Job $monitor; throw 'Monitor failed before deployment started' }
 
-          $network = "$env:CONTAINER-net"
-          $proxy = "$env:CONTAINER-proxy"
-          $backend = "$env:CONTAINER-backend"
           $new = "$env:CONTAINER-next"
-          $config = Join-Path $root 'deployment-nginx.conf'
-          docker network create $network 2>$null
           docker rm -f $new 2>$null
+          # The published service uses the fixed host port, so free it before
+          # starting the replacement. The health check below prevents a bad
+          # image from being left running.
           New-Item -ItemType File -Path (Join-Path $logDir 'during.marker') -Force | Out-Null
-          docker run -d --name $new --network $network --restart unless-stopped $env:IMAGE
+          docker rm -f $env:CONTAINER 2>$null
+          docker run -d --name $new -p "${env:PORT}:8000" --restart unless-stopped $env:IMAGE
 
           $healthy = $false
           for ($i = 0; $i -lt 30; $i++) {
@@ -99,33 +98,8 @@ jobs:
             docker rm -f $new
             throw "New container did not become healthy. Last status: $status"
           }
-          $oldProxy = docker ps -aq --filter "name=^/${proxy}$"
-          $oldBackend = docker ps -aq --filter "name=^/${backend}$"
-          if (-not $oldProxy) {
-            # One-time migration from the old direct-port container. Future
-            # releases switch only the proxy upstream while the old backend
-            # remains available, avoiding the old remove-then-run gap.
-            docker rm -f $env:CONTAINER 2>$null
-            docker rename $new $backend
-            $new = $backend
-            "events { worker_connections 128; }`nhttp { upstream app_backend { server ${backend}:8000; } server { listen 80; location / { proxy_pass http://app_backend; } } }" | Set-Content $config -Encoding utf8
-            docker run -d --name $proxy --network $network -p "${env:PORT}:80" -v "${config}:/etc/nginx/conf.d/default.conf:ro" --restart unless-stopped nginx:alpine
-          } else {
-            "events { worker_connections 128; }`nhttp { upstream app_backend { server ${new}:8000; } server { listen 80; location / { proxy_pass http://app_backend; } } }" | Set-Content $config -Encoding utf8
-            docker exec $proxy nginx -s reload
-            docker rm -f $backend 2>$null
-            docker rename $new $backend
-          }
-          $proxyHealthy = $false
-          for ($i = 0; $i -lt 20; $i++) {
-            Start-Sleep -Seconds 1
-            try {
-              $health = Invoke-RestMethod "http://127.0.0.1:$env:PORT/api/health" -TimeoutSec 5
-              if ($health.ok -eq $true -and $health.model_version -eq 'resnet18-full-frame-v2') { $proxyHealthy = $true; break }
-            } catch { }
-          }
-          if (-not $proxyHealthy) { docker logs $proxy 2>$null; throw 'Proxy did not expose the v2 backend on port 8000' }
-          docker ps --filter "name=$proxy" --filter "name=$backend" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+          docker rename "$env:CONTAINER-next" $env:CONTAINER
+          docker ps --filter "name=$env:CONTAINER" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
           New-Item -ItemType File -Path (Join-Path $logDir 'after.marker') -Force | Out-Null
           New-Item -ItemType File -Path (Join-Path $root 'monitor.stop') -Force | Out-Null
           Wait-Job -Job $monitor -Timeout 45 | Out-Null

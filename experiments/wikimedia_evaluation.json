@@ -18,9 +18,9 @@
       "out_unknown_rate": 0.8333333333333334
     },
     {
-      "kind": "full_frame_v2_threshold",
-      "threshold": 0.22,
-      "in_accuracy": 0.20833333333333334,
+      "kind": "baseline_lower_unknown_threshold",
+      "threshold": 0.15,
+      "in_accuracy": 0.25,
       "out_unknown_rate": 0.8333333333333334
     }
   ],
