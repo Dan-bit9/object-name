@@ -60,26 +60,30 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Pull the published image
-        shell: powershell
-        run: docker pull $env:IMAGE
-
-      - name: Start independent deployment monitor
+      - name: Pull, deploy, and monitor in one runner step
         shell: powershell
         run: |
-          Remove-Item deployment-logs, monitor.stop -Recurse -Force -ErrorAction SilentlyContinue
-          $p = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','scripts/monitor.ps1' -PassThru
-          Set-Content -Path monitor.pid -Value $p.Id -Encoding ascii
+          $root = (Get-Location).Path
+          $logDir = Join-Path $root 'deployment-logs'
+          Remove-Item -LiteralPath $logDir -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath (Join-Path $root 'monitor.stop') -Force -ErrorAction SilentlyContinue
+          docker pull $env:IMAGE
+          $stdout = Join-Path $root 'deployment-logs-startup.out'
+          $stderr = Join-Path $root 'deployment-logs-startup.err'
+          New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+          $monitor = Start-Process -FilePath 'powershell.exe' -WorkingDirectory $root -WindowStyle Hidden -PassThru `
+            -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'scripts/monitor.ps1'),'-LogDir',$logDir,'-StopFile',(Join-Path $root 'monitor.stop') `
+            -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          Set-Content -Path (Join-Path $root 'monitor.pid') -Value $monitor.Id -Encoding ascii
           Start-Sleep -Seconds 3
+          if ($monitor.HasExited) { Get-Content $stderr -ErrorAction SilentlyContinue; throw 'Monitor exited before deployment started' }
 
-      - name: Start new container and verify health
-        shell: powershell
-        run: |
           $new = "$env:CONTAINER-next"
           docker rm -f $new 2>$null
           # The published service uses the fixed host port, so free it before
           # starting the replacement. The health check below prevents a bad
           # image from being left running.
+          New-Item -ItemType File -Path (Join-Path $logDir 'during.marker') -Force | Out-Null
           docker rm -f $env:CONTAINER 2>$null
           docker run -d --name $new -p "${env:PORT}:8000" --restart unless-stopped $env:IMAGE
 
@@ -95,20 +99,12 @@ jobs:
             docker rm -f $new
             throw "New container did not become healthy. Last status: $status"
           }
-
-      - name: Replace the running container
-        shell: powershell
-        run: |
           docker rename "$env:CONTAINER-next" $env:CONTAINER
           docker ps --filter "name=$env:CONTAINER" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-      - name: Stop monitor after post-deployment observation
-        if: always()
-        shell: powershell
-        run: |
-          New-Item monitor.stop -ItemType File -Force | Out-Null
+          New-Item -ItemType File -Path (Join-Path $logDir 'after.marker') -Force | Out-Null
+          New-Item -ItemType File -Path (Join-Path $root 'monitor.stop') -Force | Out-Null
           Start-Sleep -Seconds 35
-          if (Test-Path monitor.pid) { Stop-Process -Id (Get-Content monitor.pid) -Force -ErrorAction SilentlyContinue }
+          if (Test-Path (Join-Path $root 'monitor.pid')) { Stop-Process -Id (Get-Content (Join-Path $root 'monitor.pid')) -Force -ErrorAction SilentlyContinue }
 
       - name: Publish deployment summary
         if: always()
