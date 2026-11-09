@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from torchvision.models import ResNet18_Weights, resnet18
+from torchvision.transforms import Compose, Resize, ToTensor, Normalize
 
 ROOT = Path(__file__).parent
 app = FastAPI(title="쑥쑥 사물 학습")
@@ -28,7 +29,9 @@ LABELS = {
 }
 weights = ResNet18_Weights.DEFAULT
 model = resnet18(weights=weights).eval()
-preprocess = weights.transforms()
+MODEL_VERSION = "resnet18-full-frame-v1"
+preprocess = Compose([Resize((224, 224), antialias=True), ToTensor(),
+                      Normalize(weights.transforms().mean, weights.transforms().std)])
 imagenet = weights.meta["categories"]
 
 def predict(image: Image.Image):
@@ -47,15 +50,16 @@ def index():
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "model": "ResNet-18 ImageNet (CPU)", "items": len(set(LABELS.values()))}
+    return {"ok": True, "model": "ResNet-18 ImageNet (CPU)", "model_version": MODEL_VERSION,
+            "items": len(set(LABELS.values()))}
 
 @app.post("/api/identify")
 async def identify(file: Annotated[UploadFile, File()]):
     result = predict(Image.open(BytesIO(await file.read())))
-    return {"ok": True, **result}
+    return {"ok": True, "model_version": MODEL_VERSION, **result}
 
 @app.post("/api/quiz")
 async def quiz(target: str, file: Annotated[UploadFile, File()]):
     result = predict(Image.open(BytesIO(await file.read())))
     correct = result["name"] == target if result["name"] else False
-    return {"ok": True, "correct": correct, **result, "target": target}
+    return {"ok": True, "model_version": MODEL_VERSION, "correct": correct, **result, "target": target}

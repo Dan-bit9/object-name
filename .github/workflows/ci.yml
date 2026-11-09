@@ -64,6 +64,14 @@ jobs:
         shell: powershell
         run: docker pull $env:IMAGE
 
+      - name: Start independent deployment monitor
+        shell: powershell
+        run: |
+          Remove-Item deployment-logs, monitor.stop -Recurse -Force -ErrorAction SilentlyContinue
+          $p = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','scripts/monitor.ps1' -PassThru
+          Set-Content -Path monitor.pid -Value $p.Id -Encoding ascii
+          Start-Sleep -Seconds 3
+
       - name: Start new container and verify health
         shell: powershell
         run: |
@@ -93,3 +101,26 @@ jobs:
         run: |
           docker rename "$env:CONTAINER-next" $env:CONTAINER
           docker ps --filter "name=$env:CONTAINER" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+      - name: Stop monitor after post-deployment observation
+        if: always()
+        shell: powershell
+        run: |
+          New-Item monitor.stop -ItemType File -Force | Out-Null
+          Start-Sleep -Seconds 35
+          if (Test-Path monitor.pid) { Stop-Process -Id (Get-Content monitor.pid) -Force -ErrorAction SilentlyContinue }
+
+      - name: Publish deployment summary
+        if: always()
+        shell: powershell
+        run: |
+          if (Test-Path deployment-logs/summary.md) { Get-Content deployment-logs/summary.md -Encoding utf8 | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }
+          else { "# Deployment verification summary`n`nMonitor did not produce a summary; inspect the artifact logs." | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }
+
+      - name: Upload deployment logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-verification-logs
+          path: deployment-logs
+          if-no-files-found: warn

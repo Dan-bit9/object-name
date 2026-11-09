@@ -31,3 +31,16 @@ _diag/
 .runner
 .credentials
 .credentials_rsaparams
+
+# Model evaluation data, caches, and generated reports
+experiments/data/
+experiments/results/
+experiments/wikimedia_data/
+experiments/wikimedia_manifest.csv
+experiments/wikimedia_summary.json
+deployment-logs/
+monitor.stop
+monitor.pid
+*.png
+*.jpg
+*.jpeg

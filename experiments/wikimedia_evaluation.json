@@ -1,0 +1,43 @@
+{
+  "data": {
+    "total": 100,
+    "tuning": 30,
+    "final": 70,
+    "in_list": 80,
+    "out_of_list": 20
+  },
+  "baseline_tuning": {
+    "in_accuracy": 0.25,
+    "out_unknown_rate": 0.8333333333333334
+  },
+  "candidate_tuning": [
+    {
+      "kind": "full_frame",
+      "threshold": 0.2,
+      "in_accuracy": 0.3333333333333333,
+      "out_unknown_rate": 0.8333333333333334
+    },
+    {
+      "kind": "baseline_lower_unknown_threshold",
+      "threshold": 0.15,
+      "in_accuracy": 0.25,
+      "out_unknown_rate": 0.8333333333333334
+    }
+  ],
+  "selected": {
+    "kind": "full_frame",
+    "threshold": 0.2
+  },
+  "baseline_final": {
+    "in_accuracy": 0.26785714285714285,
+    "out_unknown_rate": 1.0
+  },
+  "selected_final": {
+    "in_accuracy": 0.2857142857142857,
+    "out_unknown_rate": 1.0
+  },
+  "final_delta": {
+    "in_accuracy": 0.01785714285714285,
+    "out_unknown_rate": 0.0
+  }
+}
