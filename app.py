@@ -29,7 +29,7 @@ LABELS = {
 }
 weights = ResNet18_Weights.DEFAULT
 model = resnet18(weights=weights).eval()
-MODEL_VERSION = "resnet18-full-frame-v1"
+MODEL_VERSION = "resnet18-full-frame-v2"
 preprocess = Compose([Resize((224, 224), antialias=True), ToTensor(),
                       Normalize(weights.transforms().mean, weights.transforms().std)])
 imagenet = weights.meta["categories"]
@@ -40,7 +40,7 @@ def predict(image: Image.Image):
     values, indices = torch.topk(probs, 5)
     for value, index in zip(values.tolist(), indices.tolist()):
         raw = imagenet[index].lower()
-        if raw in LABELS and value >= 0.20:
+        if raw in LABELS and value >= 0.22:
             return {"name": LABELS[raw], "confidence": round(value, 3), "raw": raw}
     return {"name": None, "confidence": round(values[0].item(), 3), "raw": imagenet[indices[0]].lower()}
 

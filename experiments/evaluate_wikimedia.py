@@ -72,7 +72,7 @@ rows = load_rows(); tuning = [r for r in rows if r["split"] == "tuning"]; final 
 baseline_tune = evaluate(tuning, model, weights.meta["categories"], "baseline", .20)
 attempts = [
     ("full_frame", .20),
-    ("baseline_lower_unknown_threshold", .15),
+    ("full_frame_v2_threshold", .22),
 ]
 candidate_tuning = []
 for kind, threshold in attempts:
