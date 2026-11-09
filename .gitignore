@@ -23,3 +23,11 @@ test-images/
 .ruff_cache/
 .cache/
 .model-cache/
+
+# GitHub Actions self-hosted runner files (never commit these)
+actions-runner/
+_work/
+_diag/
+.runner
+.credentials
+.credentials_rsaparams
