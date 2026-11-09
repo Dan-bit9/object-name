@@ -68,15 +68,11 @@ jobs:
           Remove-Item -LiteralPath $logDir -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item -LiteralPath (Join-Path $root 'monitor.stop') -Force -ErrorAction SilentlyContinue
           docker pull $env:IMAGE
-          $stdout = Join-Path $root 'deployment-logs-startup.out'
-          $stderr = Join-Path $root 'deployment-logs-startup.err'
           New-Item -ItemType Directory -Force -Path $logDir | Out-Null
-          $monitor = Start-Process -FilePath 'powershell.exe' -WorkingDirectory $root -WindowStyle Hidden -PassThru `
-            -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'scripts/monitor.ps1'),'-LogDir',$logDir,'-StopFile',(Join-Path $root 'monitor.stop') `
-            -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-          Set-Content -Path (Join-Path $root 'monitor.pid') -Value $monitor.Id -Encoding ascii
+          $monitor = Start-Job -Name DeploymentMonitor -FilePath (Join-Path $root 'scripts/monitor.ps1') `
+            -ArgumentList $logDir,(Join-Path $root 'monitor.stop'),30
           Start-Sleep -Seconds 3
-          if ($monitor.HasExited) { Get-Content $stderr -ErrorAction SilentlyContinue; throw 'Monitor exited before deployment started' }
+          if ($monitor.State -eq 'Failed') { Receive-Job $monitor; throw 'Monitor failed before deployment started' }
 
           $new = "$env:CONTAINER-next"
           docker rm -f $new 2>$null
@@ -103,8 +99,9 @@ jobs:
           docker ps --filter "name=$env:CONTAINER" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
           New-Item -ItemType File -Path (Join-Path $logDir 'after.marker') -Force | Out-Null
           New-Item -ItemType File -Path (Join-Path $root 'monitor.stop') -Force | Out-Null
-          Start-Sleep -Seconds 35
-          if (Test-Path (Join-Path $root 'monitor.pid')) { Stop-Process -Id (Get-Content (Join-Path $root 'monitor.pid')) -Force -ErrorAction SilentlyContinue }
+          Wait-Job -Job $monitor -Timeout 45 | Out-Null
+          Receive-Job -Job $monitor -Keep -ErrorAction SilentlyContinue
+          Remove-Job -Job $monitor -Force -ErrorAction SilentlyContinue
 
       - name: Publish deployment summary
         if: always()
